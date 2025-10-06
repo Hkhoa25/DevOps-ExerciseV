@@ -1,0 +1,189 @@
+<!doctype html>
+<!--
+  File: index.html
+  Purpose: Minimal frontend UI for the Color Converter API (Hex ↔ RGB).
+  Usage:
+    - Place this file in the "public" folder next to server.js.
+    - Start server.js and open http://localhost:3001/
+  Features:
+    - Hex → RGB: accepts 6-digit hex (with or without leading '#') and shows JSON result.
+    - RGB → Hex: accepts three integers (0–255) and shows JSON result.
+    - Works without JavaScript by submitting forms to backend endpoints.
+    - Includes optional JavaScript to fetch results inline without navigation.
+  Backend endpoints this page uses:
+    - GET /hextorgb/:hex      (example: /hextorgb/FF00AA => { r:255, g:0, b:170 })
+    - GET /rgbtohex/:r/:g/:b  (example: /rgbtohex/255/0/170 => { hex:"#FF00AA" })
+  Notes:
+    - Client-side validation is present (pattern and min/max) but server-side validation is authoritative.
+    - For accessibility, form fields use labels; consider adding aria-live attributes for screen reader announcements.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Color Converter - Hex ↔ RGB</title>
+
+  <!--
+    Styles: Simple embedded CSS for layout and readable controls.
+    Keep styles local to avoid external dependencies for this exercise.
+  -->
+  <style>
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial; max-width: 720px; margin: 40px auto; padding: 0 16px; color: #111; }
+    h1 { font-size: 1.4rem; margin-bottom: 0.25rem; }
+    .card { border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 12px 0; background: #fbfdff; }
+    label { display:block; margin:8px 0 4px; font-weight:600; }
+    input[type="text"], input[type="number"] { width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:6px; box-sizing:border-box; }
+    .row { display:flex; gap:8px; }
+    .row input { flex:1; }
+    button { padding:10px 14px; border-radius:6px; border:0; background:#0066cc; color:white; cursor:pointer; }
+    button[disabled] { opacity:0.6; cursor:not-allowed; }
+    pre { background:#f3f4f6; padding:12px; border-radius:6px; overflow:auto; }
+    .muted { color:#6b7280; font-size:0.9rem; }
+  </style>
+</head>
+<body>
+  <!--
+    Page header:
+      - Visible title for users and assistive tech.
+  -->
+  <h1>Color Converter</h1>
+
+  <!--
+    Hex → RGB card:
+      - Form method GET with action /hextorgb/
+      - Input accepts 6 hex digits, optional leading '#'
+      - If JS is disabled, change the "Convert inline" button to a submit button to open backend JSON.
+  -->
+  <div class="card" id="hexToRgbCard">
+    <h2>Hex → RGB</h2>
+
+    <!--
+      The "name" attribute on the input is "hex" to match backend expectation when using normal form submission.
+      The input uses an HTML pattern to guide users: #?[0-9A-Fa-f]{6}
+    -->
+    <form id="hexForm" method="get" action="/hextorgb/">
+      <label for="hexInput">Hex (6-digit, with or without #)</label>
+      <input id="hexInput" name="hex" type="text" placeholder="#FF00AA or FF00AA" pattern="#?[0-9A-Fa-f]{6}" required />
+      <div style="margin-top:10px;">
+        <!--
+          The button here is type="button" so it won't submit the form by default.
+          It triggers the JS inline fetch. For non-JS users, replace/add a submit button:
+            <button type="submit">Convert (open JSON response)</button>
+        -->
+        <button type="button" id="hexFetchBtn">Convert inline</button>
+      </div>
+    </form>
+
+    <!--
+      Result area:
+        - Preformatted block to show JSON or user messages.
+        - Consider adding aria-live="polite" to announce updates to screen readers.
+    -->
+    <div style="margin-top:12px;">
+      <strong>Result</strong>
+      <pre id="hexResult" aria-live="polite">—</pre>
+    </div>
+  </div>
+
+  <!--
+    RGB → Hex card:
+      - Three numeric inputs (r, g, b) with min/max constraints.
+      - Form action uses /rgbtohex/ route pattern when submitted without JS.
+  -->
+  <div class="card" id="rgbToHexCard">
+    <h2>RGB → Hex</h2>
+
+    <!--
+      The form uses GET and its inputs are named r, g, b for compatibility with backend path-style params.
+      For non-JS full-page submit behavior, a submit button can be provided similarly to the hex form.
+    -->
+    <form id="rgbForm" method="get" action="/rgbtohex/">
+      <label for="r">Red</label>
+      <input id="r" name="r" type="number" min="0" max="255" required />
+      <label for="g">Green</label>
+      <input id="g" name="g" type="number" min="0" max="255" required />
+      <label for="b">Blue</label>
+      <input id="b" name="b" type="number" min="0" max="255" required />
+      <div style="margin-top:10px;">
+        <button type="button" id="rgbFetchBtn">Convert inline</button>
+      </div>
+    </form>
+
+    <div style="margin-top:12px;">
+      <strong>Result</strong>
+      <pre id="rgbResult" aria-live="polite">—</pre>
+    </div>
+  </div>
+
+  <!--
+    JavaScript: optional inline fetch logic
+      - Keeps the page usable without JS; the script only enhances UX.
+      - Behavior:
+          * Hex: strips an optional leading '#' then GETs /hextorgb/<cleaned>
+          * RGB: GETs /rgbtohex/<r>/<g>/<b>
+      - Displays formatted JSON in the <pre> elements or error messages.
+  -->
+  <script>
+    (function () {
+      // DOM references for hex flow
+      const hexForm = document.getElementById('hexForm');
+      const hexInput = document.getElementById('hexInput');
+      const hexFetchBtn = document.getElementById('hexFetchBtn');
+      const hexResult = document.getElementById('hexResult');
+
+      // DOM references for rgb flow
+      const rgbForm = document.getElementById('rgbForm');
+      const rInput = document.getElementById('r');
+      const gInput = document.getElementById('g');
+      const bInput = document.getElementById('b');
+      const rgbFetchBtn = document.getElementById('rgbFetchBtn');
+      const rgbResult = document.getElementById('rgbResult');
+
+      // Hex inline fetch handler
+      hexFetchBtn.addEventListener('click', async () => {
+        // Trim and validate presence of input; pattern attribute enforces format in supporting browsers
+        const raw = hexInput.value.trim();
+        if (!raw) {
+          hexResult.textContent = 'Provide a hex value.';
+          return;
+        }
+
+        // Remove optional '#' for backend route
+        const cleaned = raw.replace(/^#/, '');
+
+        try {
+          hexResult.textContent = 'Loading...';
+          const res = await fetch('/hextorgb/' + encodeURIComponent(cleaned));
+          const json = await res.json();
+          if (!res.ok) throw new Error(json.error || 'Request failed');
+          // Pretty-print JSON for readability
+          hexResult.textContent = JSON.stringify(json, null, 2);
+        } catch (err) {
+          hexResult.textContent = 'Error: ' + err.message;
+        }
+      });
+
+      // RGB inline fetch handler
+      rgbFetchBtn.addEventListener('click', async () => {
+        const r = rInput.value;
+        const g = gInput.value;
+        const b = bInput.value;
+        if (r === '' || g === '' || b === '') {
+          rgbResult.textContent = 'Fill all RGB fields.';
+          return;
+        }
+
+        try {
+          rgbResult.textContent = 'Loading...';
+          const res = await fetch('/rgbtohex/' + encodeURIComponent(r) + '/' + encodeURIComponent(g) + '/' + encodeURIComponent(b));
+          const json = await res.json();
+          if (!res.ok) throw new Error(json.error || 'Request failed');
+          rgbResult.textContent = JSON.stringify(json, null, 2);
+        } catch (err) {
+          rgbResult.textContent = 'Error: ' + err.message;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
